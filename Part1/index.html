@@ -1,0 +1,351 @@
+<!--1 npx hardhat node-->
+<!--2 npx hardhat run --network localhost scripts/deploy.js-->
+<!--3 serve the root folder with a http server-->
+
+<script src="https://unpkg.com/vue@3"></script>
+<script src="https://cdn.ethers.io/lib/ethers-5.2.umd.min.js" type="application/javascript"></script>
+<script src="https://cdn.jsdelivr.net/npm/snarkjs@0.4.22/build/snarkjs.min.js"></script>
+<script>
+const abi = `[
+  {
+    "inputs": [],
+    "stateMutability": "nonpayable",
+    "type": "constructor"
+  },
+  {
+    "inputs": [],
+    "name": "DEPTH",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "LEAF_COUNT",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "name": "hashes",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "index",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "hashedLeaf",
+        "type": "uint256"
+      }
+    ],
+    "name": "insertLeaf",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "root",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256[2]",
+        "name": "a",
+        "type": "uint256[2]"
+      },
+      {
+        "internalType": "uint256[2][2]",
+        "name": "b",
+        "type": "uint256[2][2]"
+      },
+      {
+        "internalType": "uint256[2]",
+        "name": "c",
+        "type": "uint256[2]"
+      },
+      {
+        "internalType": "uint256[1]",
+        "name": "input",
+        "type": "uint256[1]"
+      }
+    ],
+    "name": "verify",
+    "outputs": [
+      {
+        "internalType": "bool",
+        "name": "",
+        "type": "bool"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256[2]",
+        "name": "a",
+        "type": "uint256[2]"
+      },
+      {
+        "internalType": "uint256[2][2]",
+        "name": "b",
+        "type": "uint256[2][2]"
+      },
+      {
+        "internalType": "uint256[2]",
+        "name": "c",
+        "type": "uint256[2]"
+      },
+      {
+        "internalType": "uint256[1]",
+        "name": "input",
+        "type": "uint256[1]"
+      }
+    ],
+    "name": "verifyProof",
+    "outputs": [
+      {
+        "internalType": "bool",
+        "name": "r",
+        "type": "bool"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  }
+]`
+
+function unstringifyBigInts(o) {
+  if ((typeof(o) == "string") && (/^[0-9]+$/.test(o) ))  {
+    return BigInt(o);
+  } else if ((typeof(o) == "string") && (/^0x[0-9a-fA-F]+$/.test(o) ))  {
+    return BigInt(o);
+  } else if (Array.isArray(o)) {
+    return o.map(unstringifyBigInts);
+  } else if (typeof o == "object") {
+    if (o===null) return null;
+    const res = {};
+    const keys = Object.keys(o);
+    keys.forEach( (k) => {
+      res[k] = unstringifyBigInts(o[k]);
+    });
+    return res;
+  } else {
+    return o;
+  }
+}
+</script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@0.9.4/css/bulma.min.css">
+
+<div id="app" class="section">
+  <div class="box">
+    <div class="title">Merkle tree contract tester</div>
+    <div v-if="!contractAddressConfirmed">
+      <div class="subtitle">Please enter the merkle tree contract address</div>
+      <input class="block input" type="text" v-model="contractAddress"/>
+      <button class="block button is-primary" @click="confirmContractClicked">Let's go!</button>
+    </div>
+    <div v-else>
+      <div class="block">
+        <strong>Contract address</strong>
+        <div>{{ contractAddress }}</div>
+      </div>
+      <div class="block">
+        <strong>Root</strong>
+        <div>{{ root }}</div>
+      </div>
+      <div class="block">
+        <strong>Index</strong>
+        <div>{{ index }}</div>
+      </div>
+      <div class="block">
+        <strong>Hashes</strong>
+        <div v-for="(hash, i) in hashes" :key="hash">{{ i }}: {{ hash }}</div>
+      </div>
+      <div class="block">
+        <strong>Insert leaf</strong>
+        <input type="text" class="input mt-4" placeholder="new leaf value" v-model="insertLeafInput">
+        <a class="button is-primary mt-4" @click="insertLeaf">Insert leaf</a>
+      </div>
+      <div class="block">
+        <strong>Verify proof</strong>
+        <input type="text" class="input mt-4" placeholder="leaf" v-model="verifyProofLeaf">
+        <div v-for="verifyProofPathElement in verifyProofPathElements" :key="verifyProofPathElement.id">
+          <input type="text" class="input mt-4" placeholder="path element" v-model="verifyProofPathElement.value">
+        </div>
+        <div v-for="verifyProofPathIndex in verifyProofPathIndexes" :key="verifyProofPathIndex.id">
+          <input type="text" class="input mt-4" placeholder="path index" v-model="verifyProofPathIndex.value">
+        </div>
+        <button class="button is-primary mt-4" @click="verifyProof">Verify proof</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal" :class="{'is-active': showVerifyProofValid}">
+    <div class="modal-background"></div>
+    <div class="modal-content">
+      <div class="notification is-success">
+        <button class="delete" @click="showVerifyProofValid = false"></button>
+        The contract accepted the proof!
+      </div>
+    </div>
+  </div>
+
+  <div class="modal" :class="{'is-active': showVerifyProofInvalid}">
+    <div class="modal-background"></div>
+    <div class="modal-content">
+      <div class="notification is-danger">
+        <button class="delete" @click="showVerifyProofInvalid = false"></button>
+        The contract rejected the proof!
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const {createApp} = Vue
+
+createApp({
+  data () {
+    return {
+      contractAddress: null,
+      contractAddressConfirmed: false,
+      merkleTree: null,
+      root: null,
+      index: null,
+      insertLeafInput: null,
+      hashes: [],
+      verifyProofLeaf: null,
+      verifyProofPathCount: null,
+      verifyProofPathElements: [],
+      verifyProofPathIndexes: [],
+      showVerifyProofValid: false,
+      showVerifyProofInvalid: false,
+    }
+  },
+  methods: {
+    async confirmContractClicked () {
+      // We use the default hardhat addresses as they are prefunded with ETH
+      // No wallet provider like Metamask is used here
+      const provider = new ethers.providers.JsonRpcProvider('http://localhost:8545')
+      const signer = provider.getSigner(0)
+
+      this.merkleTree = new ethers.Contract(this.contractAddress, abi, signer)
+      await this.loadContractData()
+      this.contractAddressConfirmed = true
+    },
+
+    async loadContractData () {
+      this.root = (await this.merkleTree.root()).toString()
+      this.index = (await this.merkleTree.index()).toString()
+
+      const depth = parseInt(await this.merkleTree.DEPTH())
+      const hashCount = Math.pow(2, depth) * 2 - 1
+      const updatedHashes = []
+      for (let i = 0; i < hashCount; i++) {
+        updatedHashes.push((await this.merkleTree.hashes(i)).toString())
+      }
+      this.hashes = updatedHashes
+
+      this.verifyProofPathElements = []
+      this.verifyProofPathIndexes = []
+      for (let i = 1; i <= depth; i++) {
+        this.verifyProofPathElements.push({id: i, value: null})
+        this.verifyProofPathIndexes.push({id: i, value: null})
+      }
+    },
+
+    async insertLeaf () {
+      await this.merkleTree.insertLeaf(this.insertLeafInput)
+      this.insertLeafInput = null
+      await this.loadContractData()
+    },
+
+    async verifyProof () {
+      const Input = {
+        "leaf": this.verifyProofLeaf,
+        "path_elements": this.verifyProofPathElements.map(verifyProofPathElement => verifyProofPathElement.value),
+        "path_index": this.verifyProofPathIndexes.map(verifyProofPathIndex => verifyProofPathIndex.value)
+      }
+
+      const { proof, publicSignals } =
+        await snarkjs.groth16.fullProve(Input, "circuits/circuit_js/circuit.wasm","circuits/circuit_final.zkey");
+
+      const editedPublicSignals = unstringifyBigInts(publicSignals);
+      const editedProof = unstringifyBigInts(proof);
+      const calldata = await snarkjs.groth16.exportSolidityCallData(editedProof, editedPublicSignals);
+
+      const argv = calldata.replace(/["[\]\s]/g, "").split(',').map(x => BigInt(x).toString());
+
+      const a = [argv[0], argv[1]];
+      const b = [[argv[2], argv[3]], [argv[4], argv[5]]];
+      const c = [argv[6], argv[7]];
+      const input = argv.slice(8);
+
+      const validProof = await this.merkleTree.verify(a, b, c, input)
+      if (validProof) {
+        this.showVerifyProofValid = true
+      } else {
+        this.showVerifyProofInvalid = true
+      }
+    },
+  }
+}).mount('#app')
+</script>
